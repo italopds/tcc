@@ -7,10 +7,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Carbon\Carbon;
+use Illuminate\Notifications\Notifiable;
 
 class Baby extends Model
 {
-    use HasFactory;
+    use HasFactory, Notifiable;
 
     protected $fillable = [
         'user_id',
@@ -44,6 +45,14 @@ class Baby extends Model
     public function alarms(): HasMany
     {
         return $this->hasMany(Alarm::class);
+    }
+
+    /**
+     * Get the notifications for the baby.
+     */
+    public function notifications()
+    {
+        return $this->morphMany(Notification::class, 'notifiable');
     }
 
     /**

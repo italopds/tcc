@@ -4,9 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Baby;
 use App\Models\Feeding;
-use App\Models\Alarm;
 use App\Models\Tip;
 use App\Models\User;
+use App\Models\Alarm;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\ValidationException;
 use App\Http\Controllers\NotificationController;
 use Closure;
+use App\Models\Notification;
 
 class DashboardController extends Controller
 {
@@ -28,47 +29,22 @@ class DashboardController extends Controller
 
     public function index()
     {
-        $selectedBabyId = request('baby_id');
-
-        /** @var User $user */
-        $user = Auth::user();
-        $babies = $user->babies;
-
-        if ($babies->isEmpty()) {
-            return view('dashboard', [
-                'user' => $user,
-                'babies' => $babies,
-                'baby' => null,
-                'feedings' => collect(),
-                'alarms' => collect()
-            ]);
+        $user = auth()->user();
+        $selectedBaby = session('selected_baby_id') ? Baby::find(session('selected_baby_id')) : $user->babies->first();
+        
+        if (!$selectedBaby) {
+            return redirect()->route('babies.create')->with('warning', 'Por favor, cadastre um bebê primeiro.');
         }
 
-        if (!$selectedBabyId) {
-            $baby = $babies->first();
-        } else {
-            $baby = $babies->firstWhere('id', $selectedBabyId);
-            if (!$baby) {
-                return redirect()->route('dashboard')->with('error', 'Bebê não encontrado.');
-            }
-        }
-
-        $feedings = $baby->feedings()
-            ->whereDate('started_at', today())
-            ->orderBy('started_at', 'desc')
-            ->take(3)
-            ->get(['id', 'baby_id', 'started_at', 'ended_at', 'duration', 'quantity']);
-
-        $alarms = $baby->alarms()
-            ->orderBy('time')
+        $notifications = $selectedBaby->notifications()
+            ->orderBy('created_at', 'desc')
+            ->take(5)
             ->get();
 
-        return view('dashboard', [
+        return view('dashboard.index', [
             'user' => $user,
-            'babies' => $babies,
-            'baby' => $baby,
-            'feedings' => $feedings,
-            'alarms' => $alarms
+            'selectedBaby' => $selectedBaby,
+            'notifications' => $notifications
         ]);
     }
 
@@ -103,28 +79,21 @@ class DashboardController extends Controller
                 'baby_id' => 'required|exists:babies,id',
                 'started_at' => 'required|date',
                 'ended_at' => 'nullable|date|after:started_at',
+                'duration' => 'required|integer|min:0',
                 'quantity' => 'nullable|integer|min:0'
             ]);
 
             Log::info('Dados validados', ['validated' => $validated]);
 
-            $startedAt = Carbon::parse($validated['started_at']);
-            $endedAt = Carbon::parse($validated['ended_at']);
+            // Usar o horário atual de Brasília
+            $now = Carbon::now('America/Sao_Paulo');
             
-            // Calcular a duração em minutos
-            $duration = $endedAt->diffInSeconds($startedAt) / 60;
-
-            Log::info('Cálculos realizados', [
-                'started_at' => $startedAt,
-                'ended_at' => $endedAt,
-                'duration' => $duration
-            ]);
-
+            // Criar o registro com o horário atual
             $feeding = Feeding::create([
                 'baby_id' => $validated['baby_id'],
-                'started_at' => $startedAt,
-                'ended_at' => $endedAt,
-                'duration' => (int)$duration,
+                'started_at' => $now,
+                'ended_at' => $now,
+                'duration' => $validated['duration'],
                 'quantity' => $validated['quantity']
             ]);
 
@@ -132,8 +101,7 @@ class DashboardController extends Controller
 
             // Buscar os 3 registros mais recentes
             $recentFeedings = $baby->feedings()
-                ->whereDate('started_at', today())
-                ->orderBy('started_at', 'desc')
+                ->orderBy('created_at', 'desc')
                 ->take(3)
                 ->get();
 
@@ -166,65 +134,6 @@ class DashboardController extends Controller
         }
     }
 
-    public function toggleAlarm(Request $request, $alarmId)
-    {
-        try {
-            Log::info('Tentando alternar estado do alarme', ['alarm_id' => $alarmId]);
-
-            $alarm = Alarm::whereHas('baby', function($query) {
-                $query->where('user_id', Auth::id());
-            })->findOrFail($alarmId);
-
-            $alarm->is_active = !$alarm->is_active;
-            $alarm->save();
-
-            Log::info('Estado do alarme alterado com sucesso', [
-                'alarm_id' => $alarmId,
-                'new_state' => $alarm->is_active
-            ]);
-
-            if ($alarm->is_active) {
-                $user = Auth::user();
-                $subscription = json_decode($user->push_subscription, true);
-                
-                if ($subscription) {
-                    $this->notificationController->sendNotification(new Request([
-                        'message' => "Alarme de amamentação ativado para {$alarm->time} - {$alarm->day_name}"
-                    ]));
-                }
-            }
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Estado do alarme alterado com sucesso',
-                'alarm' => $alarm
-            ]);
-
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            Log::warning('Alarme não encontrado ou não pertence ao usuário', [
-                'alarm_id' => $alarmId,
-                'user_id' => Auth::id()
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Alarme não encontrado ou não pertence ao usuário'
-            ], 404);
-
-        } catch (\Exception $e) {
-            Log::error('Erro ao alterar estado do alarme', [
-                'alarm_id' => $alarmId,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Erro ao alterar estado do alarme: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
     public function storeBaby(Request $request)
     {
         try {
@@ -249,23 +158,6 @@ class DashboardController extends Controller
             DB::beginTransaction();
             
             $baby = $user->babies()->create($validated);
-
-            // Criar alarmes padrão para o bebê
-            $defaultAlarms = [
-                ['time' => '06:00', 'day_of_week' => 'all'],
-                ['time' => '09:00', 'day_of_week' => 'all'],
-                ['time' => '12:00', 'day_of_week' => 'all'],
-                ['time' => '15:00', 'day_of_week' => 'all'],
-                ['time' => '18:00', 'day_of_week' => 'all'],
-                ['time' => '21:00', 'day_of_week' => 'all'],
-            ];
-
-            foreach ($defaultAlarms as $alarm) {
-                if (!preg_match('/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/', $alarm['time'])) {
-                    throw new \Exception('Formato de horário inválido para o alarme padrão');
-                }
-                $baby->alarms()->create($alarm);
-            }
 
             DB::commit();
 
@@ -318,11 +210,16 @@ class DashboardController extends Controller
             $baby = Baby::where('user_id', Auth::id())
                 ->findOrFail($babyId);
 
+            // Buscar os 3 registros mais recentes
             $feedings = $baby->feedings()
-                ->whereDate('started_at', today())
-                ->orderBy('started_at', 'desc')
+                ->orderBy('created_at', 'desc')
                 ->take(3)
                 ->get();
+
+            Log::info('Registros encontrados:', [
+                'count' => $feedings->count(),
+                'feedings' => $feedings->toArray()
+            ]);
 
             return response()->json([
                 'success' => true,

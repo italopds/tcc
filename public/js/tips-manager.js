@@ -45,8 +45,8 @@ class TipsManager {
             return;
         }
 
-        // Mostrar a primeira dica
-        this.showCurrentTip();
+        // Mostrar as primeiras dicas
+        this.showCurrentTips();
 
         // Iniciar o carrossel
         this.startCarousel();
@@ -59,32 +59,40 @@ class TipsManager {
         }
     }
 
-    showCurrentTip() {
-        const tip = this.tips[this.currentTipIndex];
+    showCurrentTips() {
+        const currentTip = this.tips[this.currentTipIndex];
+        const nextTipIndex = (this.currentTipIndex + 1) % this.tips.length;
+        const nextTip = this.tips[nextTipIndex];
+
         this.tipsContainer.innerHTML = `
             <div class="tip-item mb-3 fade-in">
-                <h6>${tip.title}</h6>
-                <p>${tip.content}</p>
-                <small class="text-muted">Categoria: ${tip.category}</small>
+                <h6>${currentTip.title}</h6>
+                <p>${currentTip.content}</p>
+                <small class="text-muted">Categoria: ${currentTip.category}</small>
+            </div>
+            <div class="tip-item mb-3 fade-in">
+                <h6>${nextTip.title}</h6>
+                <p>${nextTip.content}</p>
+                <small class="text-muted">Categoria: ${nextTip.category}</small>
             </div>
         `;
     }
 
-    nextTip() {
-        this.currentTipIndex = (this.currentTipIndex + 1) % this.tips.length;
-        this.showCurrentTip();
+    nextTips() {
+        this.currentTipIndex = (this.currentTipIndex + 2) % this.tips.length;
+        this.showCurrentTips();
     }
 
     startCarousel() {
         this.carouselInterval = setInterval(() => {
-            this.nextTip();
+            this.nextTips();
         }, 10000); // 10 segundos
     }
 
     resetCarousel() {
         clearInterval(this.carouselInterval);
         this.currentTipIndex = 0;
-        this.showCurrentTip();
+        this.showCurrentTips();
         this.startCarousel();
     }
 }

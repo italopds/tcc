@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Auth;
 use Minishlink\WebPush\WebPush;
 use Minishlink\WebPush\Subscription;
 use Illuminate\Support\Facades\Log;
+use App\Models\Notification;
 
 class NotificationController extends Controller
 {
@@ -88,5 +89,11 @@ class NotificationController extends Controller
             ]);
             return response()->json(['error' => 'Error sending notification: ' . $e->getMessage()], 500);
         }
+    }
+
+    public function markAsRead(Notification $notification)
+    {
+        $notification->markAsRead();
+        return response()->json(['success' => true]);
     }
 } 

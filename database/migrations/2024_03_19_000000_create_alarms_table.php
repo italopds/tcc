@@ -6,26 +6,25 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    public function up()
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
     {
         Schema::create('alarms', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('baby_id');
+            $table->foreignId('baby_id')->constrained()->onDelete('cascade');
             $table->time('time');
-            $table->string('day_of_week');
+            $table->string('day_name');
             $table->boolean('is_active')->default(true);
             $table->timestamps();
-
-            $table->foreign('baby_id')
-                  ->references('id')
-                  ->on('babies')
-                  ->onDelete('cascade');
-            
-            $table->engine = 'InnoDB';
         });
     }
 
-    public function down()
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
     {
         Schema::dropIfExists('alarms');
     }

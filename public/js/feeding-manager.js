@@ -122,20 +122,12 @@ class FeedingManager {
 
     async registrar() {
         try {
-            // Evitar envios duplicados
             if (this.saveButton.disabled) {
                 console.log('Registro já em andamento, ignorando clique');
                 return;
             }
 
             this.saveButton.disabled = true;
-            console.log('Iniciando registro de amamentação');
-            console.log('Estado atual:', {
-                isFeeding: this.isFeeding,
-                startTime: this.startTime,
-                seconds: this.seconds,
-                babySelector: this.babySelector?.value
-            });
             
             if (this.seconds === 0) {
                 alert('Não há amamentação para registrar.');
@@ -151,11 +143,11 @@ class FeedingManager {
             const ml = mlInput ? parseInt(mlInput) : null;
             const endTime = new Date();
 
-            // Preparar dados para envio
             const requestData = {
                 baby_id: this.babySelector.value,
                 started_at: this.startTime.toISOString(),
                 ended_at: endTime.toISOString(),
+                duration: this.seconds,
                 quantity: ml
             };
 
@@ -171,7 +163,7 @@ class FeedingManager {
             console.log('Token CSRF encontrado:', token.content);
 
             // Salvar no banco de dados
-            const response = await fetch('/dashboard/feeding', {
+            const response = await fetch('/dashboard/feedings', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -224,7 +216,7 @@ class FeedingManager {
     async atualizarRegistros() {
         try {
             console.log('Atualizando registros...');
-            const response = await fetch(`/dashboard/feeding/recent?baby_id=${this.babySelector.value}`);
+            const response = await fetch(`/dashboard/feedings/recent?baby_id=${this.babySelector.value}`);
             const data = await response.json();
             console.log('Registros recebidos:', data);
 
@@ -245,16 +237,33 @@ class FeedingManager {
                 const div = document.createElement('div');
                 div.className = 'registro';
                 
+                // Converter para horário de Brasília
                 const startedAt = new Date(record.started_at);
-                const hours = Math.floor(record.duration / 60);
-                const minutes = record.duration % 60;
-                const duration = hours > 0 ? 
-                    `${hours}h ${minutes}min` : 
-                    `${minutes}min`;
+                const duration = record.duration;
+                const hours = Math.floor(duration / 3600);
+                const minutes = Math.floor((duration % 3600) / 60);
+                const seconds = duration % 60;
+                
+                const durationFormatted = hours > 0 
+                    ? `${hours}h ${minutes}min ${seconds}s`
+                    : minutes > 0 
+                        ? `${minutes}min ${seconds}s`
+                        : `${seconds}s`;
+
+                // Formatar data e hora no fuso de Brasília
+                const dataFormatada = startedAt.toLocaleDateString('pt-BR', {
+                    timeZone: 'America/Sao_Paulo'
+                });
+                const horaFormatada = startedAt.toLocaleTimeString('pt-BR', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    timeZone: 'America/Sao_Paulo'
+                });
 
                 div.innerHTML = `
-                    <strong>Data:</strong> ${startedAt.toLocaleDateString()} ${startedAt.toLocaleTimeString()}<br>
-                    <strong>Duração:</strong> ${duration}<br>
+                    <strong>Data:</strong> ${dataFormatada} ${horaFormatada}<br>
+                    <strong>Duração:</strong> ${durationFormatted}<br>
                     <strong>Quantidade:</strong> ${record.quantity ? record.quantity + ' mL' : 'não informado'}
                 `;
                 recordsContainer.appendChild(div);

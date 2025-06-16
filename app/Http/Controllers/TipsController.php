@@ -29,7 +29,7 @@ class TipsController extends Controller
             $ageInMonths = $baby->age_in_months;
             $ageRange = $this->getAgeRange($ageInMonths);
 
-            // Buscar dicas para a faixa etária
+            // Buscar duas dicas para a faixa etária
             $tips = Tip::where('age_range', $ageRange)
                 ->inRandomOrder()
                 ->take(2)
